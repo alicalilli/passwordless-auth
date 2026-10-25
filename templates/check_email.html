@@ -1,9 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="card center">
-  <div class="icon">&#9993;</div>
   <h1>Check your inbox</h1>
   <p>{{ message }}</p>
-  {% if demo %}<p><a class="button" href="{{ url_for('dev.outbox') }}">Open the demo inbox</a></p>{% endif %}
 </div>
 {% endblock %}

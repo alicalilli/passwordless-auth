@@ -1,4 +1,3 @@
-"""The signed-in user's page: passkeys, backup codes, active sessions, recent activity."""
 from flask import Blueprint, abort, g, redirect, render_template, url_for
 
 from db import execute, query
@@ -28,7 +27,7 @@ def delete_passkey(pk_id):
     uid = g.user["id"]
     pk = query("SELECT * FROM passkeys WHERE id = ? AND user_id = ?", (pk_id, uid), one=True)
     if pk is None:
-        abort(404)                                   # cannot touch another user's passkey (IDOR check)
+        abort(404)
     total = query("SELECT COUNT(*) AS n FROM passkeys WHERE user_id = ?", (uid,), one=True)["n"]
     if total <= 1:
         flash("You cannot remove your only passkey. Add another one first.", "error")
@@ -52,7 +51,7 @@ def regenerate_codes():
 @bp.get("/backup-codes/show")
 @login_required
 def show_codes():
-    codes = sess_pop("show_codes")                   # shown exactly once
+    codes = sess_pop("show_codes")
     if not codes:
         return redirect(url_for("account.home"))
     return render_template("backup_codes.html", codes=codes)

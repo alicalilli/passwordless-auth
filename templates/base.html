@@ -4,17 +4,16 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="{{ csrf_token() }}">
-  <title>{% block title %}Passwordless Lab{% endblock %}</title>
+  <title>{% block title %}Passwordless Auth{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 <header class="top">
-  <a class="brand" href="{{ url_for('auth.index') }}"><span class="logo">&#128273;</span> Passwordless Lab</a>
+  <a class="brand" href="{{ url_for('auth.index') }}">Passwordless Auth</a>
   <nav>
     {% if user %}
       <a href="{{ url_for('account.home') }}">Account</a>
       {% if user.role == 'admin' %}<a href="{{ url_for('admin.home') }}">Admin</a>{% endif %}
-      {% if demo %}<a href="{{ url_for('dev.outbox') }}" target="_blank" rel="noopener">Inbox (demo)</a>{% endif %}
       <form method="post" action="{{ url_for('auth.logout') }}" class="inline">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button class="link">Sign out</button>
@@ -22,7 +21,6 @@
     {% else %}
       <a href="{{ url_for('auth.login') }}">Sign in</a>
       <a href="{{ url_for('auth.signup') }}">Create account</a>
-      {% if demo %}<a href="{{ url_for('dev.outbox') }}" target="_blank" rel="noopener">Inbox (demo)</a>{% endif %}
     {% endif %}
   </nav>
 </header>
@@ -31,7 +29,6 @@
   <div id="js-msg" class="flash error hidden" role="alert"></div>
   {% block content %}{% endblock %}
 </main>
-<footer>ITSM Practical Work 2 &middot; passkeys (WebAuthn) + e-mail magic links &middot; no passwords stored</footer>
 <script src="{{ url_for('static', filename='webauthn.js') }}"></script>
 </body>
 </html>

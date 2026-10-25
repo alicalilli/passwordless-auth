@@ -10,21 +10,25 @@ _tmp = tempfile.mkdtemp()
 os.environ["DATABASE"] = os.path.join(_tmp, "test.db")
 os.environ["AUTH_LOG"] = os.path.join(_tmp, "auth.log")
 
-from app import app as flask_app          # noqa: E402
-from extensions import limiter            # noqa: E402
-import db                                 # noqa: E402
+import mailer
+from app import app as flask_app
+from extensions import limiter
 
-BASE = "https://localhost:5000"           # https so the test client sends Secure cookies
+SENT = []
+mailer.deliver = lambda to, subject, body: SENT.append((to, subject, body))
+
+BASE = "https://localhost:5000"
 
 
 @pytest.fixture(autouse=True)
 def clean():
     import sqlite3
     con = sqlite3.connect(os.environ["DATABASE"])
-    for t in ("sessions", "tokens", "backup_codes", "passkeys", "outbox", "events", "users"):
+    for t in ("sessions", "tokens", "backup_codes", "passkeys", "events", "users"):
         con.execute(f"DELETE FROM {t}")
     con.commit(); con.close()
     limiter.reset()
+    SENT.clear()
     yield
 
 

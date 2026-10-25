@@ -1,4 +1,3 @@
-"""Server-side sessions, CSRF, one-time link tokens, backup codes, mail outbox and the audit log."""
 import functools
 import hashlib
 import hmac
@@ -11,10 +10,11 @@ from argon2.exceptions import VerificationError, InvalidHashError
 from flask import abort, g, redirect, request, url_for
 
 import config
+import mailer
 from db import execute, now, query
 
-ph = PasswordHasher()                      # Argon2id, library defaults
-DUMMY_HASH = ph.hash("dummy-backup-code")  # used so unknown accounts cost the same time
+ph = PasswordHasher()
+DUMMY_HASH = ph.hash("dummy-backup-code")
 
 STRONG_METHODS = {"passkey", "backup_code", "signup_link", "enroll_link", "reset"}
 
@@ -23,7 +23,6 @@ def sha256(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
 
 
-# ---------------------------------------------------------------- audit log
 def log_event(event, outcome="success", user_id=None, email=None, detail=None):
     ip = request.remote_addr if request else None
     execute("INSERT INTO events (ts, event, outcome, user_id, email, ip, detail) VALUES (?,?,?,?,?,?,?)",
@@ -31,19 +30,14 @@ def log_event(event, outcome="success", user_id=None, email=None, detail=None):
     line = {"ts": now(), "event": event, "outcome": outcome, "user_id": user_id,
             "email": email, "ip": ip, "ua": request.headers.get("User-Agent", "")[:120] if request else None,
             "detail": detail}
-    with open(config.AUTH_LOG, "a", encoding="utf-8") as f:   # JSON lines, ready for a SIEM
+    with open(config.AUTH_LOG, "a", encoding="utf-8") as f:
         f.write(json.dumps(line) + "\n")
 
 
-# ---------------------------------------------------------------- mail (demo outbox)
 def send_mail(to, subject, body):
-    execute("INSERT INTO outbox (to_email, subject, body, created_at) VALUES (?,?,?,?)",
-            (to, subject, body, now()))
-    if config.DEMO_MODE:
-        print(f"\n[MAIL] to={to} | {subject}\n{body}\n", flush=True)
+    mailer.deliver(to, subject, body)
 
 
-# ---------------------------------------------------------------- sessions
 def _new_session_row(user_id=None, auth_method=None):
     raw = secrets.token_urlsafe(32)
     t = now()
@@ -116,7 +110,6 @@ def save_session(response):
     if g.get("sess") and g.get("sess_dirty"):
         execute("UPDATE sessions SET data = ? WHERE id_hash = ?", (json.dumps(g.sess["data"]), g.sess["id_hash"]))
     if g.get("new_cookie"):
-        # No Max-Age: the cookie dies with the browser; the server enforces idle and absolute timeouts.
         response.set_cookie(config.SESSION_COOKIE, g.new_cookie, httponly=True, secure=True,
                             samesite="Lax", path="/")
     elif g.get("clear_cookie"):
@@ -128,7 +121,6 @@ def save_session(response):
 
 
 def start_authenticated_session(user, method):
-    """Session rotation: the pre-login session is destroyed and a brand-new ID is issued."""
     old = g.sess["id_hash"] if g.get("sess") else None
     if old:
         execute("DELETE FROM sessions WHERE id_hash = ?", (old,))
@@ -153,7 +145,6 @@ def revoke_user_sessions(user_id, keep_current=False):
 
 
 def flash(message, category="ok"):
-    """Flash messages live in the server-side session (no extra client cookie)."""
     msgs = sess_get("_flash", []) if g.get("sess") else []
     msgs.append([category, message])
     sess_set("_flash", msgs)
@@ -163,7 +154,6 @@ def pop_flashes():
     return sess_pop("_flash") or []
 
 
-# ---------------------------------------------------------------- CSRF
 def csrf_token():
     ensure_session()
     return g.sess["data"]["csrf"]
@@ -183,7 +173,6 @@ def check_csrf():
         abort(403)
 
 
-# ---------------------------------------------------------------- one-time link tokens
 def _bind_value():
     raw = request.cookies.get(config.BIND_COOKIE) or g.get("new_bind")
     if not raw:
@@ -193,7 +182,7 @@ def _bind_value():
 
 
 def issue_token(purpose, email, ttl, payload=None, bind=True):
-    raw = secrets.token_urlsafe(32)          # 256 bits, only its hash is stored
+    raw = secrets.token_urlsafe(32)
     bind_hash = sha256(_bind_value()) if bind else None
     t = now()
     execute("INSERT INTO tokens (token_hash, purpose, email, payload, bind_hash, created_at, expires_at)"
@@ -203,7 +192,6 @@ def issue_token(purpose, email, ttl, payload=None, bind=True):
 
 
 def consume_token(raw):
-    """Returns (row, None) on success or (None, reason). Single use, expiry, browser binding."""
     if not raw or len(raw) > 100:
         return None, "missing"
     row = query("SELECT * FROM tokens WHERE token_hash = ?", (sha256(raw),), one=True)
@@ -218,7 +206,7 @@ def consume_token(raw):
         if not hmac.compare_digest(sha256(bind), row["bind_hash"]):
             return None, "other_browser"
     cur = execute("UPDATE tokens SET used_at = ? WHERE id = ? AND used_at IS NULL", (now(), row["id"]))
-    if cur.rowcount != 1:                     # lost a race with a parallel request
+    if cur.rowcount != 1:
         return None, "already_used"
     return row, None
 
@@ -236,8 +224,7 @@ def link(raw):
     return f"{config.ORIGIN}{url_for('auth.link_landing')}?t={raw}"
 
 
-# ---------------------------------------------------------------- backup codes
-ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"   # no 0/o, 1/l/i
+ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"
 
 
 def new_backup_codes(user_id):
@@ -253,7 +240,6 @@ def new_backup_codes(user_id):
 
 
 def check_backup_code(user, code):
-    """Always runs exactly BACKUP_CODE_COUNT Argon2 checks, so time does not reveal if the account exists."""
     code = (code or "").strip().lower().replace(" ", "")
     if len(code) == 10:
         code = f"{code[:5]}-{code[5:]}"
@@ -280,7 +266,6 @@ def remaining_backup_codes(user_id):
                  (user_id,), one=True)["n"]
 
 
-# ---------------------------------------------------------------- access decorators
 def safe_next(target):
     if not target:
         return None

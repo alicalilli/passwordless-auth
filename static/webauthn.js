@@ -1,5 +1,3 @@
-// Browser side of WebAuthn: converts the server's JSON options to ArrayBuffers, calls the
-// authenticator (Windows Hello, phone, security key) and posts the signed result back.
 (function () {
   const csrf = document.querySelector('meta[name="csrf-token"]').content;
 
@@ -33,11 +31,11 @@
     const out = { id: cred.id, rawId: bufToB64url(cred.rawId), type: cred.type,
                   clientExtensionResults: cred.getClientExtensionResults(), response: {} };
     if (cred.authenticatorAttachment) out.authenticatorAttachment = cred.authenticatorAttachment;
-    if (r.attestationObject) {               // registration
+    if (r.attestationObject) {
       out.response.clientDataJSON = bufToB64url(r.clientDataJSON);
       out.response.attestationObject = bufToB64url(r.attestationObject);
       out.response.transports = r.getTransports ? r.getTransports() : [];
-    } else {                                 // authentication
+    } else {
       out.response.clientDataJSON = bufToB64url(r.clientDataJSON);
       out.response.authenticatorData = bufToB64url(r.authenticatorData);
       out.response.signature = bufToB64url(r.signature);

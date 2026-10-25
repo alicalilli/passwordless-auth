@@ -1,6 +1,7 @@
 """End-to-end run of every flow in a real Chromium with a virtual passkey authenticator.
 
-Start the app first (python app.py), then:  python tests/e2e_demo.py [--shots DIR]
+Start the app in demo mode first:  set MAIL_BACKEND=outbox & set ADMIN_EMAILS=admin@itsm.lab & python app.py
+then:  python tests/e2e_demo.py [--shots DIR]
 Needs: pip install playwright && python -m playwright install chromium
 """
 import os

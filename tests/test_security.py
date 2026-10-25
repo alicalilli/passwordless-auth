@@ -1,6 +1,3 @@
-"""Security test log: every defence is checked by an automated test.
-Run:  python -m pytest -v tests/test_security.py
-"""
 import logging
 import re
 import secrets
@@ -11,12 +8,11 @@ import os
 
 import config
 from app import RedactTokens
-from conftest import BASE
+from conftest import BASE, SENT
 
 DBP = os.environ["DATABASE"]
 
 
-# ------------------------------------------------------------------ helpers
 def sql(q, args=()):
     con = sqlite3.connect(DBP); con.row_factory = sqlite3.Row
     rows = con.execute(q, args).fetchall(); con.commit(); con.close()
@@ -46,7 +42,7 @@ def sid(client):
 
 
 def last_link(email):
-    body = sql("SELECT body FROM outbox WHERE to_email = ? ORDER BY id DESC LIMIT 1", (email,))[0]["body"]
+    body = [b for to, _, b in SENT if to == email][-1]
     return re.search(r"/auth/link\?t=([\w-]+)", body).group(1)
 
 
@@ -58,7 +54,6 @@ def magic_login(client, email):
     return client.post("/auth/link", data={"t": t, "csrf_token": csrf(client)}, base_url=BASE), t
 
 
-# ------------------------------------------------------------------ cookies and headers
 def test_cookie_flags(client):
     r = client.get("/login", base_url=BASE)
     cookie = r.headers["Set-Cookie"]
@@ -78,7 +73,6 @@ def test_security_headers(client):
     assert h["Cache-Control"] == "no-store"
 
 
-# ------------------------------------------------------------------ CSRF
 def test_post_without_csrf_token_is_rejected(client):
     client.get("/login", base_url=BASE)
     r = client.post("/auth/magic", data={"email": "a@itsm.lab"}, base_url=BASE)
@@ -92,7 +86,6 @@ def test_post_from_foreign_origin_is_rejected(client):
     assert r.status_code == 403
 
 
-# ------------------------------------------------------------------ account enumeration
 def test_magic_link_same_answer_for_known_and_unknown(app, client):
     make_user(app, "ona@itsm.lab")
     tok = csrf(client)
@@ -101,6 +94,12 @@ def test_magic_link_same_answer_for_known_and_unknown(app, client):
     assert a.status_code == b.status_code == 200
     strip = lambda r: re.sub(r'content="[^"]+"|value="[^"]+"', "", r.get_data(as_text=True))
     assert strip(a) == strip(b)
+
+
+def test_no_mail_sent_to_unknown_addresses(client):
+    tok = csrf(client)
+    client.post("/auth/magic", data={"email": "stranger@itsm.lab", "csrf_token": tok}, base_url=BASE)
+    assert SENT == []
 
 
 def test_signup_same_answer_for_existing_account(app, client):
@@ -122,7 +121,7 @@ def test_backup_code_timing_does_not_reveal_accounts(app, client):
         return time.perf_counter() - t, r
 
     known, unknown = [], []
-    for _ in range(2):                       # stays under the per-account limit (5 per 15 min)
+    for _ in range(2):
         k, rk = timed("ona@itsm.lab"); u, ru = timed("nosuchuser@itsm.lab")
         known.append(k); unknown.append(u)
     assert rk.status_code == ru.status_code == 401
@@ -132,7 +131,6 @@ def test_backup_code_timing_does_not_reveal_accounts(app, client):
     assert 0.7 < ratio < 1.4
 
 
-# ------------------------------------------------------------------ rate limiting
 def test_rate_limit_per_account(client):
     tok = csrf(client)
     codes = [client.post("/auth/magic", data={"email": "ona@itsm.lab", "csrf_token": tok}, base_url=BASE).status_code
@@ -156,7 +154,6 @@ def test_rate_limited_attempts_are_logged(client):
     assert sql("SELECT COUNT(*) AS n FROM events WHERE event = 'rate_limited'")[0]["n"] >= 1
 
 
-# ------------------------------------------------------------------ magic links
 def test_magic_link_is_single_use(app, client):
     make_user(app, "ona@itsm.lab")
     r, t = magic_login(client, "ona@itsm.lab")
@@ -209,12 +206,11 @@ def test_get_does_not_consume_link(app, client):
     tok = csrf(client)
     client.post("/auth/magic", data={"email": "ona@itsm.lab", "csrf_token": tok}, base_url=BASE)
     t = last_link("ona@itsm.lab")
-    for _ in range(3):                                  # e.g. a mail scanner pre-fetching the link
+    for _ in range(3):
         client.get(f"/auth/link?t={t}", base_url=BASE)
     assert sql("SELECT used_at FROM tokens")[0]["used_at"] is None
 
 
-# ------------------------------------------------------------------ sessions
 def test_session_id_rotates_at_login_and_old_id_is_dead(app, client):
     make_user(app, "ona@itsm.lab")
     client.get("/login", base_url=BASE)
@@ -251,7 +247,6 @@ def test_session_id_stored_hashed(app, client):
     assert sid(client) not in [r["id_hash"] for r in sql("SELECT id_hash FROM sessions")]
 
 
-# ------------------------------------------------------------------ backup codes
 def test_backup_code_works_once(app, client):
     _, codes = make_user(app, "ona@itsm.lab")
     tok = csrf(client, "/recover")
@@ -268,7 +263,6 @@ def test_backup_codes_stored_as_argon2(app):
     assert h.startswith("$argon2id$")
 
 
-# ------------------------------------------------------------------ step-up and access control
 def test_magic_link_session_cannot_open_admin(app, client):
     make_user(app, "boss@itsm.lab", role="admin")
     magic_login(client, "boss@itsm.lab")
@@ -300,9 +294,8 @@ def test_disabled_account_cannot_sign_in(app, client):
     sql("UPDATE users SET status = 'disabled'")
     tok = csrf(client)
     r = client.post("/auth/magic", data={"email": "ona@itsm.lab", "csrf_token": tok}, base_url=BASE)
-    assert r.status_code == 200                                   # same generic answer on screen
-    body = sql("SELECT body FROM outbox ORDER BY id DESC LIMIT 1")[0]["body"]
-    assert "/auth/link" not in body                               # but no usable link is sent
+    assert r.status_code == 200
+    assert not [m for m in SENT if m[0] == "ona@itsm.lab"]
 
 
 def test_reset_needs_backup_code_not_just_email(app, client):
@@ -314,7 +307,7 @@ def test_reset_needs_backup_code_not_just_email(app, client):
     assert r.headers["Location"].endswith("/reset/confirm")
     r = client.post("/reset/confirm", data={"code": "wrong-codex", "csrf_token": tok}, base_url=BASE)
     assert r.status_code == 401
-    assert client.get("/account", base_url=BASE).status_code == 302      # still not signed in
+    assert client.get("/account", base_url=BASE).status_code == 302
 
 
 def test_open_redirect_blocked():

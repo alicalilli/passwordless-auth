@@ -1,4 +1,3 @@
-"""SQLite storage. One connection per request, schema created on first start."""
 import os
 import sqlite3
 import time
@@ -12,20 +11,20 @@ CREATE TABLE IF NOT EXISTS users (
     id            INTEGER PRIMARY KEY,
     email         TEXT UNIQUE NOT NULL,
     display_name  TEXT NOT NULL,
-    user_handle   BLOB UNIQUE NOT NULL,          -- random WebAuthn user.id, never the e-mail
+    user_handle   BLOB UNIQUE NOT NULL,
     grp           TEXT NOT NULL DEFAULT 'students',
-    role          TEXT NOT NULL DEFAULT 'user',  -- user | admin
-    status        TEXT NOT NULL DEFAULT 'active',-- active | disabled
+    role          TEXT NOT NULL DEFAULT 'user',
+    status        TEXT NOT NULL DEFAULT 'active',
     created_at    INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS passkeys (
     id            INTEGER PRIMARY KEY,
     user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     credential_id BLOB UNIQUE NOT NULL,
-    public_key    BLOB NOT NULL,                 -- only the public key is stored
+    public_key    BLOB NOT NULL,
     sign_count    INTEGER NOT NULL DEFAULT 0,
     transports    TEXT,
-    backed_up     INTEGER NOT NULL DEFAULT 0,    -- 1 = synced passkey
+    backed_up     INTEGER NOT NULL DEFAULT 0,
     name          TEXT NOT NULL,
     created_at    INTEGER NOT NULL,
     last_used_at  INTEGER
@@ -33,23 +32,23 @@ CREATE TABLE IF NOT EXISTS passkeys (
 CREATE TABLE IF NOT EXISTS backup_codes (
     id            INTEGER PRIMARY KEY,
     user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    code_hash     TEXT NOT NULL,                 -- Argon2id
+    code_hash     TEXT NOT NULL,
     created_at    INTEGER NOT NULL,
     used_at       INTEGER
 );
 CREATE TABLE IF NOT EXISTS tokens (
     id            INTEGER PRIMARY KEY,
-    token_hash    TEXT UNIQUE NOT NULL,          -- SHA-256 of the link token
-    purpose       TEXT NOT NULL,                 -- signup | login | reset | enroll
+    token_hash    TEXT UNIQUE NOT NULL,
+    purpose       TEXT NOT NULL,
     email         TEXT NOT NULL,
     payload       TEXT,
-    bind_hash     TEXT,                          -- SHA-256 of the requesting browser's bind cookie
+    bind_hash     TEXT,
     created_at    INTEGER NOT NULL,
     expires_at    INTEGER NOT NULL,
     used_at       INTEGER
 );
 CREATE TABLE IF NOT EXISTS sessions (
-    id_hash       TEXT PRIMARY KEY,              -- SHA-256 of the cookie value
+    id_hash       TEXT PRIMARY KEY,
     user_id       INTEGER REFERENCES users(id) ON DELETE CASCADE,
     data          TEXT NOT NULL DEFAULT '{}',
     auth_method   TEXT,
@@ -58,13 +57,6 @@ CREATE TABLE IF NOT EXISTS sessions (
     last_seen     INTEGER NOT NULL,
     ip            TEXT,
     user_agent    TEXT
-);
-CREATE TABLE IF NOT EXISTS outbox (
-    id            INTEGER PRIMARY KEY,
-    to_email      TEXT NOT NULL,
-    subject       TEXT NOT NULL,
-    body          TEXT NOT NULL,
-    created_at    INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS events (
     id            INTEGER PRIMARY KEY,

@@ -1,4 +1,3 @@
-"""Passwordless authentication demo: passkeys + e-mail magic links (ITSM Practical Work 2)."""
 import logging
 import re
 from datetime import datetime
@@ -13,7 +12,6 @@ from security import check_csrf, csrf_token, load_session, log_event, pop_flashe
 
 
 class RedactTokens(logging.Filter):
-    """Mini task 3 lesson: secrets in URLs end up in logs, so redact the link token before logging."""
     pattern = re.compile(r"([?&]t=)[^&\s\"]+")
 
     def filter(self, record):
@@ -34,12 +32,9 @@ def create_app():
     from account import bp as account_bp
     from admin import bp as admin_bp
     from auth import bp as auth_bp
-    from dev import bp as dev_bp
     app.register_blueprint(auth_bp)
     app.register_blueprint(account_bp)
     app.register_blueprint(admin_bp)
-    if config.DEMO_MODE:
-        app.register_blueprint(dev_bp)
 
     app.teardown_appcontext(db.close_db)
 
@@ -60,7 +55,7 @@ def create_app():
             "object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
         resp.headers["X-Content-Type-Options"] = "nosniff"
         resp.headers["X-Frame-Options"] = "DENY"
-        resp.headers["Referrer-Policy"] = "same-origin"     # the link token never leaks to other sites via Referer
+        resp.headers["Referrer-Policy"] = "same-origin"
         resp.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
         resp.headers["Cross-Origin-Opener-Policy"] = "same-origin"
         if config.ORIGIN.startswith("https://"):
@@ -84,7 +79,7 @@ def create_app():
     @app.context_processor
     def inject():
         return {"csrf_token": csrf_token, "user": g.get("user"), "flashes": pop_flashes,
-                "demo": config.DEMO_MODE, "sess": g.get("sess")}
+                "sess": g.get("sess")}
 
     @app.template_filter("dt")
     def dt(ts):
@@ -96,5 +91,8 @@ def create_app():
 app = create_app()
 
 if __name__ == "__main__":
-    print(f"\n  Open {config.ORIGIN}  (use 'localhost', not 127.0.0.1, or passkeys will fail)\n")
+    if not config.SMTP_PASSWORD:
+        import getpass
+        config.SMTP_PASSWORD = getpass.getpass(f"App password for {config.SMTP_USER}: ").replace(" ", "").strip()
+    print(f"\n  {config.ORIGIN}  (sending from {config.SMTP_USER}, admin: {', '.join(sorted(config.ADMIN_EMAILS))})\n")
     app.run(host="localhost", port=config.PORT, debug=False)

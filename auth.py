@@ -1,4 +1,3 @@
-"""Sign-up, passkey login, magic-link login, backup-code recovery, credential reset, step-up and logout."""
 import json
 import re
 import secrets
@@ -37,7 +36,6 @@ def json_options(options):
     return Response(options_to_json(options), mimetype="application/json")
 
 
-# ================================================================ pages
 @bp.get("/")
 def index():
     return redirect(url_for("account.home") if g.user else url_for("auth.login"))
@@ -51,7 +49,6 @@ def login():
     return render_template("login.html")
 
 
-# ================================================================ sign-up (e-mail ownership first)
 @bp.route("/signup", methods=["GET", "POST"])
 @limiter.limit(config.LIMIT_IP_AUTH, methods=["POST"])
 @limiter.limit(config.LIMIT_EMAIL_LINK, methods=["POST"], key_func=email_key)
@@ -67,7 +64,6 @@ def signup():
     existing = user_by_email(email)
     token = issue_token("signup", email, config.SIGNUP_LINK_TTL, payload={"name": name})
     if existing:
-        # Same answer on screen; the real owner gets a different e-mail. No account enumeration.
         send_mail(email, "Someone tried to create an account with your address",
                   "An account already exists for this address. If this was you, sign in with your passkey "
                   f"or ask for a sign-in link at {config.ORIGIN}/login . If not, you can ignore this message.")
@@ -80,7 +76,6 @@ def signup():
                            message="We sent a confirmation link to that address. Open it in this browser to continue.")
 
 
-# ================================================================ magic link (fallback login)
 @bp.post("/auth/magic")
 @limiter.limit(config.LIMIT_IP_AUTH)
 @limiter.limit(config.LIMIT_EMAIL_LINK, key_func=email_key)
@@ -90,21 +85,17 @@ def magic_request():
         flash("Enter a valid e-mail address.", "error")
         return redirect(url_for("auth.login"))
     user = user_by_email(email)
-    token = issue_token("login", email, config.MAGIC_LINK_TTL)   # same work whether the user exists or not
+    token = issue_token("login", email, config.MAGIC_LINK_TTL)
     if user and user["status"] == "active":
         send_mail(email, "Your sign-in link",
                   f"Open this link in the same browser to sign in:\n{link(token)}\n"
                   "It works once and expires in 10 minutes. Didn't ask for it? Ignore this e-mail.")
-    else:
-        send_mail(email, "Sign-in attempt", "Someone asked for a sign-in link for this address, "
-                  "but no active account uses it. You can ignore this message.")
     log_event("magic_link_requested", email=email, detail="known" if user else "unknown")
     return render_template("check_email.html", message=GENERIC_LINK_MSG)
 
 
 @bp.get("/auth/link")
 def link_landing():
-    # GET never consumes the token: mail scanners that pre-fetch links cannot burn or use it.
     ensure_session()
     return render_template("link_confirm.html", token=request.args.get("t", ""))
 
@@ -148,13 +139,12 @@ def link_consume():
                   "Your account was just signed in with an e-mail link. If this was not you, reset your credentials.")
         return redirect(url_for("account.home"))
 
-    if purpose == "enroll":                       # issued by an administrator
+    if purpose == "enroll":
         start_authenticated_session(user, "enroll_link")
         log_event("enroll_link_used", user_id=user["id"], email=email)
         return redirect(url_for("auth.enroll"))
 
     if purpose == "reset":
-        # Step 1 of 2 done (inbox). Step 2 is a backup code, so a stolen mailbox alone is not enough.
         sess_set("reset_email", email)
         sess_set("reset_at", now())
         return redirect(url_for("auth.reset_confirm"))
@@ -163,7 +153,6 @@ def link_consume():
     return redirect(url_for("auth.login"))
 
 
-# ================================================================ passkey registration
 @bp.get("/enroll")
 @login_required
 def enroll():
@@ -184,8 +173,8 @@ def register_options():
         rp_id=config.RP_ID, rp_name=config.RP_NAME,
         user_id=g.user["user_handle"], user_name=g.user["email"], user_display_name=g.user["display_name"],
         authenticator_selection=AuthenticatorSelectionCriteria(
-            resident_key=ResidentKeyRequirement.REQUIRED,          # discoverable: no username needed later
-            user_verification=UserVerificationRequirement.REQUIRED),  # PIN / fingerprint / face
+            resident_key=ResidentKeyRequirement.REQUIRED,
+            user_verification=UserVerificationRequirement.REQUIRED),
         exclude_credentials=[PublicKeyCredentialDescriptor(id=r["credential_id"]) for r in existing],
     )
     sess_set("reg_challenge", bytes_to_base64url(options.challenge))
@@ -220,7 +209,7 @@ def register_verify():
     send_mail(g.user["email"], "A new passkey was added",
               f"The passkey '{name}' was added to your account. If this was not you, reset your credentials now.")
     nxt = url_for("account.home")
-    if remaining_backup_codes(g.user["id"]) == 0:        # first passkey: hand out backup codes once
+    if remaining_backup_codes(g.user["id"]) == 0:
         sess_set("show_codes", new_backup_codes(g.user["id"]))
         log_event("backup_codes_generated", user_id=g.user["id"], email=g.user["email"])
         nxt = url_for("account.show_codes")
@@ -228,7 +217,6 @@ def register_verify():
     return jsonify(ok=True, redirect=nxt)
 
 
-# ================================================================ passkey login (usernameless)
 def _assertion_options(user=None):
     allow = None
     if user is not None:
@@ -241,7 +229,6 @@ def _assertion_options(user=None):
 
 
 def _verify_assertion(body, expected_user=None):
-    """Returns the user on success, None on failure (and logs the reason)."""
     challenge = sess_pop("auth_challenge")
     cred = body.get("credential") or {}
     if not challenge or not cred.get("rawId"):
@@ -267,7 +254,7 @@ def _verify_assertion(body, expected_user=None):
                                            credential_public_key=pk["public_key"],
                                            credential_current_sign_count=pk["sign_count"],
                                            require_user_verification=True)
-    except Exception as exc:          # wrong origin, bad signature, sign-count went backwards (clone) ...
+    except Exception as exc:
         return None, f"verify failed: {str(exc)[:150]}"
     execute("UPDATE passkeys SET sign_count = ?, last_used_at = ? WHERE id = ?", (v.new_sign_count, now(), pk["id"]))
     return user, pk["name"]
@@ -292,7 +279,6 @@ def login_verify():
     return jsonify(ok=True, redirect=nxt)
 
 
-# ================================================================ step-up (re-authentication)
 @bp.get("/reauth")
 @login_required
 def reauth():
@@ -317,7 +303,7 @@ def reauth_verify():
     if user is None:
         log_event("step_up", "failure", user_id=me["id"], email=me["email"], detail=info)
         return jsonify(error="That passkey was not accepted."), 400
-    start_authenticated_session(user, "passkey")       # privilege change -> new session ID
+    start_authenticated_session(user, "passkey")
     log_event("step_up", user_id=user["id"], email=user["email"], detail="method=passkey")
     return jsonify(ok=True, redirect=safe_next(request.args.get("next")) or url_for("account.home"))
 
@@ -338,7 +324,6 @@ def reauth_backup():
     return redirect(nxt)
 
 
-# ================================================================ backup-code login (backup method)
 def _warn_codes_left(user):
     left = remaining_backup_codes(user["id"])
     send_mail(user["email"], "A backup code was used",
@@ -360,7 +345,7 @@ def recover():
     if not ok:
         log_event("login_failure", "failure", user_id=user["id"] if user else None, email=email,
                   detail="method=backup_code")
-        flash("Invalid e-mail or backup code.", "error")       # one message for both cases
+        flash("Invalid e-mail or backup code.", "error")
         return render_template("recover.html"), 401
     start_authenticated_session(user, "backup_code")
     log_event("login_success", user_id=user["id"], email=email, detail="method=backup_code")
@@ -369,7 +354,6 @@ def recover():
     return redirect(url_for("account.home"))
 
 
-# ================================================================ credential reset (link + backup code)
 @bp.route("/reset", methods=["GET", "POST"])
 @limiter.limit(config.LIMIT_IP_AUTH, methods=["POST"])
 @limiter.limit(config.LIMIT_EMAIL_LINK, methods=["POST"], key_func=email_key)
@@ -387,9 +371,6 @@ def reset_request():
         send_mail(email, "Reset your sign-in credentials",
                   f"Open this link in the same browser to reset your passkeys:\n{link(token)}\n"
                   "You will also need one of your backup codes. The link expires in 15 minutes.")
-    else:
-        send_mail(email, "Reset attempt", "Someone asked to reset credentials for this address, "
-                  "but no active account uses it. You can ignore this message.")
     log_event("reset_requested", email=email, detail="known" if user else "unknown")
     return render_template("check_email.html",
                            message="If an account exists for that address, a reset link is on its way.")
@@ -410,7 +391,6 @@ def reset_confirm():
         flash("That backup code is not valid. No codes left? Ask an administrator to reset your account.", "error")
         return render_template("reset_confirm.html", email=email), 401
     sess_pop("reset_email"); sess_pop("reset_at")
-    # Wipe every old credential: passkeys, remaining codes, sessions on every device, pending links.
     execute("DELETE FROM passkeys WHERE user_id = ?", (user["id"],))
     execute("DELETE FROM backup_codes WHERE user_id = ?", (user["id"],))
     killed = revoke_user_sessions(user["id"])
@@ -423,7 +403,6 @@ def reset_confirm():
     return redirect(url_for("auth.enroll"))
 
 
-# ================================================================ logout
 @bp.post("/logout")
 def logout():
     if g.user:

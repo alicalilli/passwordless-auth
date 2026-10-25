@@ -9,6 +9,5 @@ limiter = Limiter(get_remote_address, default_limits=[config.LIMIT_DEFAULT], sto
 
 
 def email_key():
-    """Rate-limit key per target account, so many IPs cannot hammer one user."""
     email = (request.form.get("email") or "").strip().lower()
     return f"email:{email}"

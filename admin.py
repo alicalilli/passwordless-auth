@@ -1,4 +1,3 @@
-"""Infrastructure owner: invite users, central revocation and reset for one user or a whole group."""
 import secrets
 
 from flask import Blueprint, abort, g, redirect, render_template, request, url_for
@@ -30,7 +29,6 @@ def _send_enroll_link(u, reason):
 
 
 def _revoke_credentials(u):
-    """Full reset: passkeys, backup codes, sessions and pending links are all invalidated."""
     pk = execute("DELETE FROM passkeys WHERE user_id = ?", (u["id"],)).rowcount
     execute("DELETE FROM backup_codes WHERE user_id = ?", (u["id"],))
     sess = revoke_user_sessions(u["id"])
