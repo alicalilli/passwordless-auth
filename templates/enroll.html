@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Register a passkey · Passwordless Lab{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>{% if count == 0 %}Register your passkey{% else %}Add another passkey{% endif %}</h1>
+  <p class="muted">Your device creates a key pair. The private key never leaves it; the server stores only the
+    public key, so there is nothing here worth stealing or phishing.</p>
+  <label for="pk-name">Name this passkey</label>
+  <input id="pk-name" maxlength="40" placeholder="e.g. Laptop Windows Hello">
+  <button class="primary big" id="passkey-register">&#128273; Create passkey</button>
+  {% if count > 0 %}<p class="small"><a href="{{ url_for('account.home') }}">Cancel</a></p>{% endif %}
+</div>
+{% endblock %}

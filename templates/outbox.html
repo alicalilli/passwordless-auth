@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Demo inbox{% endblock %}
+{% block width %}wide{% endblock %}
+{% block content %}
+<h1>Demo inbox</h1>
+<p class="muted">Stands in for a real mail server during the demo (DEMO_MODE=1). Newest first. Refresh to see new mail.</p>
+{% for m in mails %}
+<article class="card mail">
+  <div class="mail-head"><b>{{ m.subject }}</b><span class="small muted">to {{ m.to_email }} &middot; {{ m.created_at|dt }}</span></div>
+  <p>{{ m.html }}</p>
+</article>
+{% else %}<p>No mail yet.</p>{% endfor %}
+{% endblock %}

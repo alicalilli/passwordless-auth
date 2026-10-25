@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h1>Confirm the reset</h1>
+  <p class="muted">Step 2 of 2 for <b>{{ email }}</b>: enter one backup code. All old passkeys, codes and
+    sessions will be removed and you will register a new passkey.</p>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label for="code">Backup code</label>
+    <input id="code" name="code" placeholder="xxxxx-xxxxx" autocomplete="one-time-code" required>
+    <button class="primary danger">Reset everything</button>
+  </form>
+</div>
+{% endblock %}

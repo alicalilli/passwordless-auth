@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Create account · Passwordless Lab{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>Create an account</h1>
+  <p class="muted">First we confirm your e-mail, then you register a passkey. You will never choose a password.</p>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label for="name">Name</label>
+    <input id="name" name="name" maxlength="60" required>
+    <label for="email">E-mail</label>
+    <input id="email" name="email" type="email" required>
+    <button class="primary">Send confirmation link</button>
+  </form>
+</div>
+{% endblock %}

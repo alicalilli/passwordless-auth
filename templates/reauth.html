@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h1>Confirm it's you</h1>
+  <p class="muted">This action changes your security settings{% if passkey_only %} or opens the admin area{% endif %},
+    so we need a fresh check (valid 10 minutes).</p>
+  {% if has_passkey %}
+    <button class="primary big" id="passkey-reauth" data-next="{{ next }}">&#128273; Confirm with passkey</button>
+  {% endif %}
+  {% if not passkey_only %}
+    <div class="or"><span>or</span></div>
+    <form method="post" action="{{ url_for('auth.reauth_backup') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="next" value="{{ next }}">
+      <label for="code">Use a backup code</label>
+      <div class="row"><input id="code" name="code" placeholder="xxxxx-xxxxx" required><button>Confirm</button></div>
+    </form>
+  {% elif not has_passkey %}
+    <p>The admin area requires a passkey. Register one first.</p>
+  {% endif %}
+</div>
+{% endblock %}

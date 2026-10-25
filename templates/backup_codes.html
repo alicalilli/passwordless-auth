@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h1>Your backup codes</h1>
+  <div class="flash warn">Save these now. They are shown only once. Each code works one time.</div>
+  <ol class="codes" id="codes">{% for c in codes %}<li><code>{{ c }}</code></li>{% endfor %}</ol>
+  <p class="muted small">Use one if you lose your passkey device. Store them offline (printed or in a password manager).</p>
+  <a class="button primary" href="{{ url_for('account.home') }}">I saved them</a>
+</div>
+{% endblock %}

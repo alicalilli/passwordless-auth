@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card center">
+  <h1>{{ title }}</h1>
+  <p>{{ message }}</p>
+  <p><a class="button" href="{{ url_for('auth.index') }}">Back</a></p>
+</div>
+{% endblock %}

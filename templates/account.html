@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Account · Passwordless Lab{% endblock %}
+{% block width %}wide{% endblock %}
+{% block content %}
+<h1>Hello, {{ user.display_name }}</h1>
+<p class="muted">{{ user.email }} &middot; group <b>{{ user.grp }}</b> &middot; role <b>{{ user.role }}</b> &middot;
+  signed in with <span class="tag">{{ sess.auth_method }}</span></p>
+
+{% if not passkeys %}
+<div class="flash warn">You have no passkey yet. <a href="{{ url_for('auth.enroll') }}">Register one now</a>.</div>
+{% endif %}
+
+<div class="grid">
+  <section class="card">
+    <h2>Passkeys</h2>
+    <table>
+      <tr><th>Name</th><th>Type</th><th>Added</th><th>Last used</th><th></th></tr>
+      {% for p in passkeys %}
+      <tr>
+        <td>{{ p.name }}</td>
+        <td>{% if p.backed_up %}synced{% else %}device-bound{% endif %}</td>
+        <td>{{ p.created_at|dt }}</td>
+        <td>{{ p.last_used_at|dt }}</td>
+        <td>
+          <form method="post" action="{{ url_for('account.delete_passkey', pk_id=p.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="small danger">Remove</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}<tr><td colspan="5" class="muted">none</td></tr>{% endfor %}
+    </table>
+    <a class="button" href="{{ url_for('auth.enroll') }}">+ Add a passkey</a>
+  </section>
+
+  <section class="card">
+    <h2>Backup codes</h2>
+    <p><b>{{ codes_left }}</b> unused code(s) left.</p>
+    <form method="post" action="{{ url_for('account.regenerate_codes') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button>Generate new codes</button>
+    </form>
+    <p class="muted small">Generating new codes cancels the old ones.</p>
+  </section>
+
+  <section class="card">
+    <h2>Active sessions</h2>
+    <table>
+      <tr><th>Started</th><th>Last seen</th><th>Method</th><th>IP</th></tr>
+      {% for s in sessions %}
+      <tr {% if s.id_hash == current %}class="current"{% endif %}>
+        <td>{{ s.created_at|dt }}{% if s.id_hash == current %} <span class="tag">this one</span>{% endif %}</td>
+        <td>{{ s.last_seen|dt }}</td><td>{{ s.auth_method }}</td><td>{{ s.ip }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    <form method="post" action="{{ url_for('account.revoke_others') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button>Sign out all other sessions</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>Recent security activity</h2>
+    <table class="events">
+      {% for e in events %}
+      <tr class="{{ e.outcome }}"><td>{{ e.ts|dt }}</td><td>{{ e.event }}</td><td class="small">{{ e.detail or '' }}</td></tr>
+      {% endfor %}
+    </table>
+  </section>
+</div>
+{% endblock %}

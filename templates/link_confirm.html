@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card center">
+  <h1>Continue?</h1>
+  <p class="muted">Press the button to use your one-time link. (The link is used only when you press it, so e-mail
+    scanners that open links cannot spend it.)</p>
+  <form method="post" action="{{ url_for('auth.link_consume') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="t" value="{{ token }}">
+    <button class="primary big">Continue</button>
+  </form>
+</div>
+{% endblock %}

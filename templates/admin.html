@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Admin · Passwordless Lab{% endblock %}
+{% block width %}wide{% endblock %}
+{% block content %}
+<h1>Administration</h1>
+<p class="muted">Central revocation and reset of user and group credentials. Every action is logged.</p>
+
+<div class="grid">
+  <section class="card">
+    <h2>Invite a user</h2>
+    <form method="post" action="{{ url_for('admin.invite') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label>Name</label><input name="name" required maxlength="60">
+      <label>E-mail</label><input name="email" type="email" required>
+      <label>Group</label>
+      <select name="group">{% for g in groups %}<option>{{ g }}</option>{% endfor %}</select>
+      <button class="primary">Create and send enrolment link</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>Group actions</h2>
+    {% for g in groups %}
+    <form method="post" class="group-row" action="{{ url_for('admin.group_action', grp=g, action='revoke') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <b>{{ g }}</b>
+      <input name="confirm" placeholder="type '{{ g }}' to confirm" class="confirm">
+      <button formaction="{{ url_for('admin.group_action', grp=g, action='signout') }}">Sign out all</button>
+      <button class="danger">Revoke all credentials</button>
+    </form>
+    {% endfor %}
+    <p class="muted small">Your own account is never included, so you cannot lock yourself out.</p>
+  </section>
+</div>
+
+<section class="card">
+  <h2>Users</h2>
+  <div class="scroll">
+  <table>
+    <tr><th>User</th><th>Group</th><th>Role</th><th>Status</th><th>Passkeys</th><th>Codes</th><th>Sessions</th><th>Last login</th><th>Actions</th></tr>
+    {% for u in users %}
+    <tr class="{{ u.status }}">
+      <td>{{ u.display_name }}<br><span class="small muted">{{ u.email }}</span></td>
+      <td>
+        <form method="post" action="{{ url_for('admin.user_action', user_id=u.id, action='group') }}" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <select name="group" class="auto-submit">{% for g in groups %}<option {% if g == u.grp %}selected{% endif %}>{{ g }}</option>{% endfor %}</select>
+          <button class="small">Move</button>
+        </form>
+      </td>
+      <td>{{ u.role }}</td><td>{{ u.status }}</td><td>{{ u.passkeys }}</td><td>{{ u.codes }}</td><td>{{ u.sessions }}</td>
+      <td class="small">{{ u.last_login|dt }}</td>
+      <td class="actions">
+        {% if u.id != user.id %}
+        {% for action, label, cls in [('signout','Sign out','') , ('revoke','Revoke + reset','danger'),
+                                      ('disable' if u.status == 'active' else 'enable', 'Disable' if u.status == 'active' else 'Enable', '')] %}
+        <form method="post" action="{{ url_for('admin.user_action', user_id=u.id, action=action) }}" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="small {{ cls }}">{{ label }}</button>
+        </form>
+        {% endfor %}
+        {% else %}<span class="muted small">you</span>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Authentication log (last 40)</h2>
+  <div class="scroll">
+  <table class="events">
+    <tr><th>Time</th><th>Event</th><th>Outcome</th><th>E-mail</th><th>IP</th><th>Detail</th></tr>
+    {% for e in events %}
+    <tr class="{{ e.outcome }}"><td class="small">{{ e.ts|dt }}</td><td>{{ e.event }}</td><td>{{ e.outcome }}</td>
+      <td class="small">{{ e.email or '' }}</td><td class="small">{{ e.ip or '' }}</td><td class="small">{{ e.detail or '' }}</td></tr>
+    {% endfor %}
+  </table>
+  </div>
+  <p class="muted small">The same events are written as JSON lines to <code>instance/auth.log</code> for a SIEM.</p>
+</section>
+{% endblock %}
